@@ -13,20 +13,18 @@ sleep 2
 # Git setup
 git config --global user.name "popebot"
 git config --global user.email "popebot@example.com"
-if [ -n "$GITHUB_TOKEN" ]; then
-    git config --global credential.helper store
-    echo "https://x-access-token:${GITHUB_TOKEN}@github.com" > ~/.git-credentials
-    chmod 600 ~/.git-credentials
-fi
+
+# Configure git to use gh CLI for authentication (GH_TOKEN env var required)
+gh auth setup-git
 
 # Clone branch
 if [ -n "$REPO_URL" ]; then
-    git clone --single-branch --branch "$BRANCH" --depth 1 "${REPO_URL}" /job
-    #cd /job
+    git clone --single-branch --branch "$BRANCH" --depth 1 "$REPO_URL" /job
 else
-    echo "No REPU_URL provided"
-    #cd /job
+    echo "No REPO_URL provided"
 fi
+
+exit
 
 # Point Pi to /job for auth.json
 export PI_CODING_AGENT_DIR=/job
