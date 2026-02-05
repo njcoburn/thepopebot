@@ -4,10 +4,6 @@
 
 Other agent frameworks hand your credentials directly to the LLM and hope for the best. thepopebot is different: the AI **literally cannot access your secrets**, even if it tries. Not through echo. Not through /proc. Not through clever prompt injection. The keys exist in a parallel universe the LLM can't reach.
 
-## Security That Actually Works
-
-The AI can **use** your credentials (make API calls, push to GitHub) but can't **see** them. Every bash command runs in a sanitized environment with secrets stripped out.
-
 | What the AI tries | What happens |
 |-------------------|--------------|
 | `echo $ANTHROPIC_API_KEY` | Empty |
@@ -18,20 +14,46 @@ The AI can **use** your credentials (make API calls, push to GitHub) but can't *
 
 Simple subprocess filtering. No containers-in-containers, no VM sandboxing, no complexity.
 
+[![Use this template](https://img.shields.io/badge/Use%20this%20template-238636?style=for-the-badge&logo=github)](https://github.com/stephengpope/thepopebot/generate)
+
 ---
 
-**The repository IS the agent** — Fork it and you fork everything: code, personality, logs, history. No external databases. No config drift.
+## Quick Start
 
-**GitHub Actions IS the compute** — Free, isolated containers on Microsoft's dime. Run one task or a thousand in parallel.
+### Prerequisites
 
-**Self-evolving** — The agent modifies its own code through PRs. Every change auditable, every change reversible.
+- **Node.js 18+** - [nodejs.org](https://nodejs.org)
+- **GitHub CLI** - `brew install gh` or [cli.github.com](https://cli.github.com)
+- **ngrok** - `brew install ngrok/ngrok/ngrok` or [ngrok.com](https://ngrok.com)
 
-## Two-Layer Architecture
+### Setup
 
-thepopebot features a two-layer architecture:
+```bash
+git clone https://github.com/YOUR_USERNAME/thepopebot.git
+cd thepopebot
+npm run setup
+```
 
-1. **Event Handler Layer** - Node.js Express server for webhooks, Telegram chat, and cron scheduling
-2. **Docker Agent Layer** - Pi coding agent container for autonomous task execution
+The wizard handles everything:
+1. Checks prerequisites
+2. Creates a GitHub Personal Access Token
+3. Collects API keys (Anthropic required, OpenAI optional for voice)
+4. Generates `event_handler/.env` for local development
+5. Sets all GitHub repository secrets
+6. Sets up Telegram bot
+7. Walks you through starting the server + ngrok
+8. Registers webhooks automatically
+
+After setup, message your Telegram bot to create jobs!
+
+---
+
+## How It Works
+
+thepopebot uses a two-layer architecture:
+
+1. **Event Handler** - Node.js server for webhooks, Telegram chat, and cron scheduling
+2. **Docker Agent** - Pi coding agent container for autonomous task execution
 
 ```
 ┌───────────────────────────────────────────────────────────────────────┐
@@ -65,82 +87,118 @@ thepopebot features a two-layer architecture:
 └───────────────────────────────────────────────────────────────────────┘
 ```
 
-## Installation
+**The repository IS the agent** — Fork it and you fork everything: code, personality, logs, history.
 
-### Quick Start
+**GitHub Actions IS the compute** — Free, isolated containers. Run one task or a thousand in parallel.
 
-**1. Create your own copy:**
+**Self-evolving** — The agent modifies its own code through PRs. Every change auditable, every change reversible.
 
-[![Use this template](https://img.shields.io/badge/Use%20this%20template-238636?style=for-the-badge&logo=github)](https://github.com/stephengpope/thepopebot/generate)
+---
 
-Or fork: https://github.com/stephengpope/thepopebot/fork
+## Using Your Bot
 
-**2. Clone and run setup:**
+### Telegram Chat
+
+Message your bot directly to chat or create jobs. The bot uses Claude to understand your requests and can:
+
+- **Chat** - Have a conversation, ask questions, get information
+- **Create jobs** - Say "create a job to..." and the bot will spawn an autonomous agent
+
+#### Voice Messages
+
+Send voice notes to your bot and they'll be transcribed using OpenAI Whisper.
+
+**Requirements:**
+- `OPENAI_API_KEY` in your `.env` file
+
+The bot automatically detects voice messages and transcribes them before processing.
+
+### Webhooks
+
+Create jobs programmatically via HTTP:
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/thepopebot.git
-cd thepopebot
-npm run setup
+curl -X POST http://localhost:3000/webhook \
+  -H "Content-Type: application/json" \
+  -H "x-api-key: YOUR_API_KEY" \
+  -d '{"job": "Update the README with installation instructions"}'
 ```
 
-The wizard handles everything:
-1. Checks prerequisites (Node.js 18+, gh CLI, ngrok)
-2. Creates a GitHub Personal Access Token
-3. Collects API keys (Anthropic required, OpenAI/Groq optional)
-4. Generates `event_handler/.env` for local development
-5. Sets all GitHub repository secrets (`SECRETS`, `LLM_SECRETS`, etc.)
-6. Sets up Telegram bot
-7. Walks you through starting the server + ngrok
-8. Registers webhooks automatically
+### Scheduled Jobs
 
-After setup, message your Telegram bot to create jobs!
+Define recurring jobs in `operating_system/CRONS.json`:
 
-### Prerequisites
+```json
+[
+  {
+    "name": "daily-check",
+    "schedule": "0 9 * * *",
+    "job": "Check for dependency updates",
+    "enabled": true
+  }
+]
+```
 
-- **Node.js 18+** - [nodejs.org](https://nodejs.org)
-- **GitHub CLI** - `brew install gh` or [cli.github.com](https://cli.github.com)
-- **ngrok** - `brew install ngrok/ngrok/ngrok` or [ngrok.com](https://ngrok.com)
+Set `"enabled": true` to activate a scheduled job.
 
-### GitHub Secrets (set automatically by wizard)
+---
+
+## Configuration
+
+### Environment Variables
+
+All environment variables for the Event Handler (set in `event_handler/.env`):
+
+| Variable | Description | Required |
+|----------|-------------|----------|
+| `API_KEY` | Authentication key for /webhook endpoint | Yes |
+| `GH_TOKEN` | GitHub PAT for creating branches/files | Yes |
+| `GH_OWNER` | GitHub repository owner | Yes |
+| `GH_REPO` | GitHub repository name | Yes |
+| `PORT` | Server port (default: 3000) | No |
+| `TELEGRAM_BOT_TOKEN` | Telegram bot token from BotFather | For Telegram |
+| `TELEGRAM_WEBHOOK_SECRET` | Secret for webhook validation | No |
+| `GH_WEBHOOK_TOKEN` | Token for GitHub Actions webhook auth | For notifications |
+| `ANTHROPIC_API_KEY` | Claude API key for chat functionality | For chat |
+| `OPENAI_API_KEY` | OpenAI key for voice transcription | For voice |
+| `EVENT_HANDLER_MODEL` | Claude model for chat (default: claude-sonnet-4) | No |
+
+### GitHub Secrets
+
+Set automatically by the setup wizard:
 
 | Secret | Description |
 |--------|-------------|
-| `SECRETS` | Base64-encoded JSON with protected credentials (see below) |
+| `SECRETS` | Base64-encoded JSON with protected credentials |
 | `LLM_SECRETS` | Base64-encoded JSON with LLM-accessible credentials (optional) |
 | `GH_WEBHOOK_URL` | Your ngrok URL |
 | `GH_WEBHOOK_TOKEN` | Random token for webhook authentication |
 
-The `SECRETS` secret is a base64-encoded JSON object containing all credentials:
+### Operating System Files
 
-```json
-{
-  "GH_TOKEN": "ghp_xxx",
-  "ANTHROPIC_API_KEY": "sk-ant-xxx",
-  "OPENAI_API_KEY": "sk-xxx"
-}
-```
+Customize agent behavior in `operating_system/`:
 
-Encode with: `echo -n '{"GH_TOKEN":"...","ANTHROPIC_API_KEY":"..."}' | base64`
+| File | Purpose |
+|------|---------|
+| `THEPOPEBOT.md` | Core behavioral instructions (what to do, workflow patterns) |
+| `SOUL.md` | Agent identity, personality traits, and values |
+| `CHATBOT.md` | System prompt for Telegram chat |
+| `JOB_SUMMARY.md` | Prompt for summarizing completed jobs |
+| `HEARTBEAT.md` | Self-monitoring behavior |
+| `CRONS.json` | Scheduled job definitions |
 
-At runtime, the entrypoint decodes and parses this JSON, exporting each key as an environment variable.
+### Task Definition
 
-## Configuration Files
+Edit `workspace/job.md` with:
+- Clear task description
+- Specific requirements
+- Expected outputs
 
-### workspace/job.md (Required)
+---
 
-The task for the agent to execute. Be specific about what you want done.
+## Reference
 
-### operating_system/
-
-Agent behavior and personality configuration:
-- **THEPOPEBOT.md** - Core behavioral instructions (what to do, workflow patterns)
-- **SOUL.md** - Agent identity, personality traits, and values
-- **CHATBOT.md** - System prompt for Telegram chat
-- **JOB_SUMMARY.md** - Prompt for summarizing completed jobs
-- **HEARTBEAT.md** - Self-monitoring behavior
-- **CRONS.json** - Scheduled jobs (set `"enabled": true` to activate)
-
-## File Structure
+### File Structure
 
 ```
 /
@@ -175,20 +233,6 @@ Agent behavior and personality configuration:
 └── SECURITY.md             # Security documentation
 ```
 
-## Event Handler
-
-The Event Handler is a Node.js Express server that orchestrates job creation through various triggers.
-
-### Running the Event Handler
-
-The setup wizard creates `.env` automatically. To start manually:
-
-```bash
-cd event_handler
-npm install
-npm start
-```
-
 ### API Endpoints
 
 | Endpoint | Method | Purpose |
@@ -196,21 +240,23 @@ npm start
 | `/webhook` | POST | Generic webhook for job creation (requires API_KEY header) |
 | `/telegram/webhook` | POST | Telegram bot webhook for conversational interface |
 | `/telegram/register` | POST | Register Telegram webhook URL |
-| `/github/webhook` | POST | Receives notifications from GitHub Actions (pr-webhook.yml) |
+| `/github/webhook` | POST | Receives notifications from GitHub Actions |
 | `/jobs/status` | GET | Check status of a running job |
 
-### API Examples
+**Examples:**
 
-**Create a job via webhook:**
 ```bash
+# Create a job via webhook
 curl -X POST http://localhost:3000/webhook \
   -H "Content-Type: application/json" \
   -H "x-api-key: YOUR_API_KEY" \
   -d '{"job": "Update the README with installation instructions"}'
-```
 
-**Register Telegram webhook:**
-```bash
+# Check job status
+curl "http://localhost:3000/jobs/status?job_id=abc123" \
+  -H "x-api-key: YOUR_API_KEY"
+
+# Register Telegram webhook
 curl -X POST http://localhost:3000/telegram/register \
   -H "Content-Type: application/json" \
   -H "x-api-key: YOUR_API_KEY" \
@@ -220,122 +266,64 @@ curl -X POST http://localhost:3000/telegram/register \
   }'
 ```
 
-**Check job status:**
-```bash
-curl "http://localhost:3000/jobs/status?job_id=abc123" \
-  -H "x-api-key: YOUR_API_KEY"
-```
-
-### Environment Variables (Event Handler)
-
-| Variable | Description | Required |
-|----------|-------------|----------|
-| `API_KEY` | Authentication key for /webhook endpoint | Yes |
-| `GH_TOKEN` | GitHub PAT for creating branches/files | Yes |
-| `GH_OWNER` | GitHub repository owner | Yes |
-| `GH_REPO` | GitHub repository name | Yes |
-| `PORT` | Server port (default: 3000) | No |
-| `TELEGRAM_BOT_TOKEN` | Telegram bot token from BotFather | For Telegram |
-| `TELEGRAM_WEBHOOK_SECRET` | Secret for webhook validation | No |
-| `GH_WEBHOOK_TOKEN` | Token for GitHub Actions webhook auth | For notifications |
-| `ANTHROPIC_API_KEY` | Claude API key for chat functionality | For chat |
-| `EVENT_HANDLER_MODEL` | Claude model for chat (default: claude-sonnet-4) | No |
-
-### Telegram Bot Setup
-
-The setup wizard handles Telegram configuration automatically. You just need to:
-
-1. Create a bot with [@BotFather](https://t.me/botfather) on Telegram
-2. Have the bot token ready when running `npm run setup`
-
-The wizard will register the webhook and configure everything else.
-
-## Docker Agent
-
-The Docker container executes tasks autonomously using the Pi coding agent.
-
-### What's in the Container
-
-- Node.js 22
-- Pi coding agent
-- Puppeteer + Chromium (headless browser, CDP port 9222)
-- Git + GitHub CLI
-
-### Environment Variables (Docker Agent)
-
-| Variable | Description | Required |
-|----------|-------------|----------|
-| `REPO_URL` | Your repository URL | Yes |
-| `BRANCH` | Branch to work on (e.g., job/uuid) | Yes |
-| `SECRETS` | Base64-encoded JSON with protected credentials (GH_TOKEN, ANTHROPIC_API_KEY, etc.) - filtered from LLM | Yes |
-| `LLM_SECRETS` | Base64-encoded JSON with credentials the LLM can access (browser logins, skill API keys, etc.) | No |
-
-### Runtime Flow
-
-1. Extract Job ID from branch name (job/uuid → uuid) or generate UUID
-2. Start Chrome in headless mode (CDP on port 9222)
-3. Decode `SECRETS` from base64, parse JSON, export each key as env var (filtered from LLM's bash)
-4. Decode `LLM_SECRETS` from base64, parse JSON, export each key as env var (LLM can access these)
-5. Configure Git credentials via `gh auth setup-git` (uses GH_TOKEN from step 3)
-5. Clone your repository branch to `/job`
-6. Run Pi with THEPOPEBOT.md + SOUL.md + job.md as instructions
-7. Commit all changes: `thepopebot: job {UUID}`
-8. Create PR and auto-merge to main
-9. Clean up
-
-## GitHub Actions
-
-GitHub Actions automate the entire job lifecycle. No manual webhook configuration needed in GitHub settings.
-
-### Workflows
+### GitHub Actions Workflows
 
 | Workflow | Trigger | Purpose |
 |----------|---------|---------|
 | `job-runner.yml` | `job/*` branch created | Runs Docker agent container |
 | `pr-webhook.yml` | PR opened from `job/*` branch | Notifies event handler → Telegram |
 
-### How It Works
-
-1. Event handler (or Telegram chat) creates a `job/uuid` branch via GitHub API
+**Flow:**
+1. Event handler creates a `job/uuid` branch via GitHub API
 2. GitHub Actions detects branch creation → runs `job-runner.yml`
 3. Docker agent executes task, commits results, creates PR
 4. GitHub Actions detects PR opened → runs `pr-webhook.yml`
-5. Event handler receives notification → sends Telegram message with job status
+5. Event handler receives notification → sends Telegram message
 
-## Customization
+### Docker Agent
 
-### Customize the Operating System
+The container executes tasks autonomously using the Pi coding agent.
 
-Edit files in `operating_system/`:
-- **THEPOPEBOT.md** - Git conventions, prohibited actions, error handling, protocols
-- **SOUL.md** - Identity, traits, working style, values
-- **CHATBOT.md** - Telegram conversational behavior
-- **HEARTBEAT.md** - Periodic self-check behavior
-- **CRONS.json** - Scheduled job definitions
+**Container includes:**
+- Node.js 22
+- Pi coding agent
+- Puppeteer + Chromium (headless browser, CDP port 9222)
+- Git + GitHub CLI
 
-### Define Tasks
+**Environment Variables:**
 
-Edit `workspace/job.md` with:
-- Clear task description
-- Specific requirements
-- Expected outputs
+| Variable | Description | Required |
+|----------|-------------|----------|
+| `REPO_URL` | Your repository URL | Yes |
+| `BRANCH` | Branch to work on (e.g., job/uuid) | Yes |
+| `SECRETS` | Base64-encoded JSON with protected credentials | Yes |
+| `LLM_SECRETS` | Base64-encoded JSON with LLM-accessible credentials | No |
 
-## Session Logs
+**Runtime Flow:**
+1. Extract Job ID from branch name
+2. Start Chrome in headless mode
+3. Decode and export secrets (filtered from LLM's bash)
+4. Decode and export LLM secrets (accessible to LLM)
+5. Configure Git credentials
+6. Clone repository branch
+7. Run Pi with THEPOPEBOT.md + SOUL.md + job.md
+8. Commit all changes
+9. Create PR and auto-merge
+
+### Session Logs
 
 Each job creates a session log at `workspace/logs/{JOB_ID}/`. These can be used to resume sessions or review agent actions.
 
+---
+
 ## Security
 
-### Secrets Protection
-
-The agent runs with access to sensitive credentials (API keys, GitHub tokens). The `env-sanitizer` extension in `.pi/extensions/` protects these from being leaked by the AI agent.
-
-**How It Works:**
+### How Secret Protection Works
 
 1. GitHub passes a single `SECRETS` env var (base64-encoded JSON with all credentials)
-2. The entrypoint decodes and parses the JSON, exports each key as a flat env var
+2. The entrypoint decodes the JSON and exports each key as an env var
 3. Pi starts - SDKs read their env vars (ANTHROPIC_API_KEY, gh CLI uses GH_TOKEN)
-4. The extension's `spawnHook` filters ALL secret keys from bash subprocess env
+4. The `env-sanitizer` extension filters ALL secret keys from bash subprocess env
 5. The LLM can't `echo $ANYTHING` - subprocess env is filtered
 6. Other extensions still have full `process.env` access
 
@@ -350,28 +338,15 @@ The agent runs with access to sensitive credentials (API keys, GitHub tokens). T
 
 ### LLM-Accessible Secrets
 
-Sometimes you want the LLM to have access to certain credentials - browser logins, skill API keys, or service passwords that skills need to use. Use `LLM_SECRETS` for these.
-
-**How It Works:**
-
-1. `LLM_SECRETS` is a separate base64-encoded JSON (same format as `SECRETS`)
-2. The entrypoint decodes and exports each key as an env var
-3. These keys are **NOT** filtered by the env-sanitizer extension
-4. The LLM can access them via `echo $KEY_NAME` in bash
-
-**Example:**
+Sometimes you want the LLM to have access to certain credentials - browser logins, skill API keys, or service passwords. Use `LLM_SECRETS` for these.
 
 ```bash
-# Credentials the LLM should NOT access (filtered)
+# Protected (filtered from LLM)
 SECRETS=$(echo -n '{"GH_TOKEN":"ghp_xxx","ANTHROPIC_API_KEY":"sk-ant-xxx"}' | base64)
 
-# Credentials the LLM CAN access (not filtered)
-LLM_SECRETS=$(echo -n '{"BROWSER_PASSWORD":"mypass123","SOME_API_KEY":"key_for_skill"}' | base64)
-
-docker run --rm -e SECRETS="$SECRETS" -e LLM_SECRETS="$LLM_SECRETS" thepopebot:latest
+# Accessible to LLM (not filtered)
+LLM_SECRETS=$(echo -n '{"BROWSER_PASSWORD":"mypass123"}' | base64)
 ```
-
-**Use Cases:**
 
 | Credential Type | Put In | Why |
 |-----------------|--------|-----|
@@ -380,15 +355,14 @@ docker run --rm -e SECRETS="$SECRETS" -e LLM_SECRETS="$LLM_SECRETS" thepopebot:l
 | Browser login password | `LLM_SECRETS` | Skills may need to authenticate |
 | Third-party API key for a skill | `LLM_SECRETS` | Skills need these to function |
 
-### Env-Sanitizer Implementation
+### Implementation
 
-The extension dynamically reads the `SECRETS` JSON to determine which keys to filter:
+The `env-sanitizer` extension in `.pi/extensions/` dynamically filters secrets:
 
 ```typescript
 const bashTool = createBashTool(process.cwd(), {
   spawnHook: ({ command, cwd, env }) => {
     const filteredEnv = { ...env };
-    // Filter all keys defined in SECRETS JSON
     if (process.env.SECRETS) {
       try {
         for (const key of Object.keys(JSON.parse(process.env.SECRETS))) {
@@ -402,34 +376,26 @@ const bashTool = createBashTool(process.cwd(), {
 });
 ```
 
-**No special Docker flags required.** Works on any host.
+No special Docker flags required. Works on any host.
 
 ### Security Testing
 
 ```bash
-# Build and run
-# Mac users (Apple Silicon): use --platform linux/amd64 for local testing
+# Build (Mac users: use --platform linux/amd64 for local testing)
 docker build --platform linux/amd64 -t thepopebot:test .
 
-# Create base64-encoded SECRETS
+# Run with test secrets
 SECRETS=$(echo -n '{"GH_TOKEN":"ghp_test","ANTHROPIC_API_KEY":"sk-ant-test"}' | base64)
 docker run --rm -e SECRETS="$SECRETS" thepopebot:test
 
-# Agent should NOT be able to echo any of these vars
-# But Pi SDK and gh CLI should work (they read from process.env)
+# Agent should NOT be able to echo any secret vars
+# But Pi SDK and gh CLI should work normally
 ```
 
 ### Custom Extensions
 
-The env-sanitizer protects against the **AI agent** accessing secrets through bash commands. It does NOT restrict extension code itself.
+The env-sanitizer protects against the **AI agent** accessing secrets through bash. Extension code itself can access `process.env` directly - this is by design.
 
-**If you write custom extensions:**
-
-- Extension code runs in the same Node.js process as Pi
-- Your extension CAN access `process.env` directly if needed
-- This is by design - you control what your extensions do
-- Only the AI agent's bash subprocess calls are filtered
-
-**Best practices for custom extensions:**
+**Best practices:**
 - Don't create tools that echo environment variables to the agent
 - Review extension code before adding to your agent
