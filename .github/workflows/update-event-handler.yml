@@ -26,7 +26,7 @@ jobs:
 
           # Fallback: look up PR by head branch
           if [ -z "$PR_NUMBER" ]; then
-            PR_NUMBER=$(gh pr list --head "$BRANCH" --repo "${{ github.repository }}" --json number -q '.[0].number')
+            PR_NUMBER=$(gh pr list --head "$BRANCH" --state all --repo "${{ github.repository }}" --json number -q '.[0].number')
           fi
 
           if [ -z "$PR_NUMBER" ]; then
