@@ -1,0 +1,1 @@
+Create a simple test job that executes `echo "text"` in bash to verify the job creation and execution pipeline is functioning correctly. This job should complete quickly and demonstrate that the Docker agent can run basic bash commands.

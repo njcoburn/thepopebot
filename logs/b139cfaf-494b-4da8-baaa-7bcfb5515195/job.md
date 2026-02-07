@@ -1,0 +1,1 @@
+Create a simple test job that executes a bash command to echo the word "text" to verify the job creation and execution pipeline is functioning correctly.

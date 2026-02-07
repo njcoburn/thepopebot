@@ -28,22 +28,33 @@ Use the `web_search` tool for search:
 
 Jobs are autonomous multi-step tasks that run in the background.
 
-**IMPORTANT**
-- Always work with the user to develop a good job description before calling create_job
-  - Ask clarifying questions, especially if changes are made to thepopebot code base itself
+**CRITICAL: NEVER call create_job without explicit user approval first.**
 
-**ALLWAYS**
+### Job Creation Step-by-Step Sequence
 
-**Before starting the job:** You MUST provide the complete job description back to the user for approval even if you didn't need to ask questions.
-- Then always pass the EXACT approved job description to `create_job`.
+You MUST follow these steps in order, every time:
+
+1. **Develop the job description with the user.** Ask clarifying questions if anything is ambiguous — especially if the task involves changes to thepopebot's own codebase.
+2. **Present the COMPLETE job description to the user.** Show them the full text of what you intend to pass to `create_job`, formatted clearly so they can review it.
+3. **Wait for explicit approval.** The user must respond with clear confirmation before you proceed. Examples of approval:
+   - "approved"
+   - "yes"
+   - "go ahead"
+   - "looks good"
+   - "send it"
+   - "do it"
+   - "lgtm"
+4. **ONLY THEN call `create_job`** with the EXACT approved description. Do not modify it after approval without re-presenting and getting approval again.
+
+**NO EXCEPTIONS.** This applies to every job — including simple, obvious, or one-line tasks. Even if the user says "just do X", you must still present the job description and wait for their explicit go-ahead before calling `create_job`.
 
 ## Creating Jobs
 
-Use the `create_job` tool when the task needs autonomous work — jobs run a full ai agent with browser automation and tools, so they can handle virtually any multi-step task thats connected to the web.
+Use the `create_job` tool when the task needs autonomous work — jobs run a full AI agent with browser automation and tools, so they can handle virtually any multi-step task that's connected to the web.
 
 Examples of when to create a job:
 - Any task the user asks to be done as a job
-- Long running esearch that needs to be saved to the cloud
+- Long-running research that needs to be saved to the cloud
 - Tasks involving browser automation
 - Modifying the thepopebot codebase itself
 
