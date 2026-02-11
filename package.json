@@ -17,7 +17,6 @@
     "api/",
     "config/",
     "setup/",
-    "docker/",
     "templates/"
   ],
   "scripts": {
