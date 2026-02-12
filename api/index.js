@@ -74,9 +74,10 @@ async function summarizeJob(results) {
       results.job ? `## Task\n${results.job}` : '',
       results.commit_message ? `## Commit Message\n${results.commit_message}` : '',
       results.changed_files?.length ? `## Changed Files\n${results.changed_files.join('\n')}` : '',
-      results.pr_status ? `## PR Status\n${results.pr_status}` : '',
+      results.status ? `## Status\n${results.status}` : '',
       results.merge_result ? `## Merge Result\n${results.merge_result}` : '',
       results.pr_url ? `## PR URL\n${results.pr_url}` : '',
+      results.run_url ? `## Run URL\n${results.run_url}` : '',
       results.log ? `## Agent Log\n${results.log}` : '',
     ].filter(Boolean).join('\n\n');
 
@@ -98,10 +99,10 @@ async function summarizeJob(results) {
     if (!response.ok) throw new Error(`Claude API error: ${response.status}`);
 
     const result = await response.json();
-    return (result.content?.[0]?.text || '').trim() || 'Job completed.';
+    return (result.content?.[0]?.text || '').trim() || 'Job finished.';
   } catch (err) {
     console.error('Failed to summarize job:', err);
-    return 'Job completed.';
+    return 'Job finished.';
   }
 }
 
@@ -250,19 +251,9 @@ async function handleGithubWebhook(request) {
     }
   }
 
-  const event = request.headers.get('x-github-event');
   const payload = await request.json();
-
-  if (event !== 'pull_request') {
-    return Response.json({ ok: true, skipped: true });
-  }
-
-  const pr = payload.pull_request;
-  if (!pr) return Response.json({ ok: true, skipped: true });
-
-  const branchName = pr.head?.ref;
-  const jobId = extractJobId(branchName);
-  if (!jobId) return Response.json({ ok: true, skipped: true, reason: 'not a job branch' });
+  const jobId = payload.job_id || extractJobId(payload.branch);
+  if (!jobId) return Response.json({ ok: true, skipped: true, reason: 'not a job' });
 
   if (!TELEGRAM_CHAT_ID || !botToken) {
     console.log(`Job ${jobId} completed but no chat ID to notify`);
@@ -270,9 +261,16 @@ async function handleGithubWebhook(request) {
   }
 
   try {
-    // All job data comes from the webhook payload — no GitHub API calls needed
-    const results = payload.job_results || {};
-    results.pr_url = pr.html_url;
+    const results = {
+      job: payload.job || '',
+      pr_url: payload.pr_url || payload.run_url || '',
+      run_url: payload.run_url || '',
+      status: payload.status || '',
+      merge_result: payload.merge_result || '',
+      log: payload.log || '',
+      changed_files: payload.changed_files || [],
+      commit_message: payload.commit_message || '',
+    };
 
     const message = await summarizeJob(results);
 
