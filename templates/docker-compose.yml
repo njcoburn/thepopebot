@@ -43,7 +43,7 @@ services:
       REPO_URL: https://github.com/${GH_OWNER}/${GH_REPO}
       ACCESS_TOKEN: ${GH_TOKEN}
       RUNNER_SCOPE: repo
-      LABELS: self-hosted,thepopebot
+      LABELS: self-hosted
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     restart: unless-stopped
