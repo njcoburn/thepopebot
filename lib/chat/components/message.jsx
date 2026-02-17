@@ -74,6 +74,11 @@ export function PreviewMessage({ message, isLoading }) {
           ) : (
             <Streamdown mode={isLoading ? 'streaming' : 'static'}>{text}</Streamdown>
           )
+        ) : isLoading ? (
+          <div className="flex items-center gap-2 text-muted-foreground">
+            <SpinnerIcon size={14} />
+            <span>Working...</span>
+          </div>
         ) : null}
       </div>
     </div>

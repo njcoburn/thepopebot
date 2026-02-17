@@ -74,6 +74,11 @@ export function Chat({ chatId, initialMessages = [] }) {
         <div className="flex flex-1 flex-col items-center justify-center px-2 md:px-4">
           <div className="w-full max-w-4xl">
             <Greeting />
+            {error && (
+              <div className="mt-4 rounded-lg border border-destructive/50 bg-destructive/10 px-4 py-2 text-sm text-destructive">
+                {error.message || 'Something went wrong. Please try again.'}
+              </div>
+            )}
             <div className="mt-4">
               <ChatInput
                 input={input}
