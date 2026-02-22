@@ -98,7 +98,7 @@ The `templates/` directory contains **only files that get scaffolded into user p
 | `lib/actions.js` | Shared action dispatcher for agent/command/webhook actions |
 | `lib/cron.js` | Cron scheduler — loads `config/CRONS.json` at server start |
 | `lib/triggers.js` | Trigger middleware — loads `config/TRIGGERS.json` |
-| `lib/utils/render-md.js` | Markdown `{{filepath}}` include processor |
+| `lib/utils/render-md.js` | Markdown include and variable processor (`{{filepath}}`, `{{datetime}}`, `{{skills}}`) |
 | `config/index.js` | `withThepopebot()` Next.js config wrapper |
 | `config/instrumentation.js` | `register()` server startup hook (loads .env, validates AUTH_SECRET, initializes database, starts crons) |
 | `bin/cli.js` | CLI entry point (`thepopebot init`, `setup`, `reset`, `diff`, `set-agent-secret`, `set-agent-llm-secret`, `set-var`) |
@@ -281,12 +281,6 @@ If the task needs to *think*, use `agent`. If it just needs to *do*, use `comman
 
 Creates a full Docker Agent job via `createJob()`. This pushes a `job/*` branch to GitHub, which triggers `run-job.yml` to spin up the Docker container with Pi. The `job` string is passed directly as-is to the LLM as its task prompt (written to `logs/<JOB_ID>/job.md` on the job branch).
 
-**Best practice:** Keep the `job` field short. Put detailed task instructions in a dedicated markdown file in `config/` and reference it by path:
-
-```json
-"job": "Read the file at config/MY_TASK.md and complete the tasks described there."
-```
-
 #### Type: `command`
 
 Runs a shell command directly on the event handler server. No Docker container, no GitHub branch, no LLM. Each system has its own working directory for scripts (in the user's project root):
@@ -306,46 +300,11 @@ Makes an HTTP request to an external URL. No Docker container, no LLM. Useful fo
 
 ### Cron Jobs
 
-Cron jobs are defined in `config/CRONS.json` and loaded by `lib/cron.js` at server startup (via the instrumentation hook) using `node-cron`.
-
-| Field | Description | Required |
-|-------|-------------|----------|
-| `name` | Display name for logging | Yes |
-| `schedule` | Cron expression (e.g., `*/30 * * * *`) | Yes |
-| `type` | `agent` (default), `command`, or `webhook` | No |
-| `job` | Task description for agent type | For `agent` |
-| `command` | Shell command for command type | For `command` |
-| `url` | Target URL for webhook type | For `webhook` |
-| `method` | HTTP method (`GET` or `POST`, default: `POST`) | No |
-| `headers` | Outgoing request headers | No |
-| `vars` | Extra key/value pairs merged into outgoing body | No |
-| `enabled` | Set to `false` to disable without deleting | No |
+Defined in `config/CRONS.json`, loaded by `lib/cron.js` at server startup via `node-cron`. Each entry has `name`, `schedule` (cron expression), `type` (`agent`/`command`/`webhook`), and the corresponding action fields (`job`, `command`, or `url`/`method`/`headers`/`vars`). Set `enabled: false` to disable.
 
 ### Webhook Triggers
 
-Webhook triggers are defined in `config/TRIGGERS.json` and loaded by `lib/triggers.js`. They fire actions when existing endpoints are hit. Triggers fire **after auth passes, before the route handler runs**, and are fire-and-forget (they don't block the request).
-
-| Field | Required | Default | Description |
-|-------|----------|---------|-------------|
-| `name` | yes | — | Display name for logging |
-| `watch_path` | yes | — | Existing endpoint path to watch (e.g., `/github/webhook`) |
-| `actions` | yes | — | Array of actions (each uses `type`/`job`/`command` per action types above) |
-| `actions[].type` | no | `"agent"` | `"agent"`, `"command"`, or `"webhook"` |
-| `actions[].job` | for agent | — | Job description, supports `{{body}}` (full payload) and `{{body.field}}` templates |
-| `actions[].command` | for command | — | Shell command, supports `{{body}}` and `{{body.field}}` templates |
-| `actions[].url` | for webhook | — | Target URL |
-| `actions[].method` | no | `"POST"` | HTTP method (`"GET"` or `"POST"`) |
-| `actions[].headers` | no | `{}` | Outgoing request headers |
-| `actions[].vars` | no | `{}` | Extra key/value pairs merged into outgoing body (incoming payload added as `data` field) |
-| `enabled` | no | `true` | Set `false` to disable |
-
-#### Template tokens
-
-Both `job` and `command` strings support the same templates:
-- `{{body}}` — full request body as JSON
-- `{{body.field}}` — a specific field from the body
-- `{{query}}` / `{{query.field}}` — query string params
-- `{{headers}}` / `{{headers.field}}` — request headers
+Defined in `config/TRIGGERS.json`, loaded by `lib/triggers.js`. Each trigger watches an endpoint path (`watch_path`) and fires an array of actions (fire-and-forget, after auth, before route handler). Actions use the same `type`/`job`/`command`/`url` fields as cron jobs. Action `job` and `command` strings support template tokens: `{{body}}`, `{{body.field}}`, `{{query}}`, `{{query.field}}`, `{{headers}}`, `{{headers.field}}`.
 
 ### Environment Variables (Event Handler)
 
@@ -361,11 +320,14 @@ Both `job` and `command` strings support the same templates:
 | `TELEGRAM_VERIFICATION` | Verification code for getting chat ID | For Telegram setup |
 | `TELEGRAM_CHAT_ID` | Default Telegram chat ID for notifications | For Telegram |
 | `GH_WEBHOOK_SECRET` | Secret for GitHub Actions webhook auth | For notifications |
-| `LLM_PROVIDER` | LLM provider: `anthropic`, `openai`, or `google` (default: `anthropic`) | No |
+| `LLM_PROVIDER` | LLM provider: `anthropic`, `openai`, `google`, or `custom` (default: `anthropic`). `custom` uses OpenAI-compatible endpoints (e.g., Ollama) | No |
 | `LLM_MODEL` | LLM model name override (provider-specific default if unset) | No |
+| `LLM_MAX_TOKENS` | Max tokens override for LLM responses (default: 4096) | No |
 | `ANTHROPIC_API_KEY` | API key for Anthropic provider | For anthropic provider |
 | `OPENAI_API_KEY` | API key for OpenAI provider / Whisper voice transcription | For openai provider or voice |
+| `OPENAI_BASE_URL` | Custom OpenAI-compatible base URL (e.g., `http://localhost:11434/v1` for Ollama) | For custom provider |
 | `GOOGLE_API_KEY` | API key for Google provider | For google provider |
+| `CUSTOM_API_KEY` | API key for custom OpenAI-compatible provider | For custom provider |
 | `AUTH_TRUST_HOST` | Trust host header behind reverse proxy (set `true` for Docker/Traefik) | For reverse proxy |
 | `DATABASE_PATH` | Override SQLite database location (default: `data/thepopebot.sqlite`) | No |
 
@@ -381,18 +343,7 @@ Pi skills (brave-search, browser-tools, etc.) are **not baked into the Docker im
 
 ### Runtime Flow (entrypoint.sh)
 
-1. Extract Job ID from branch name (job/uuid → uuid) or generate UUID
-2. Parse `SECRETS` JSON, export each key as env var (filtered from LLM's bash)
-3. Parse `LLM_SECRETS` JSON, export each key as env var (LLM can access these)
-4. Configure Git credentials via `gh auth setup-git` (uses GH_TOKEN from SECRETS)
-5. Clone repository branch to `/job`
-6. Install npm dependencies for each symlinked skill in `.pi/skills/`
-7. Start headless Chrome (conditional — only if browser-tools installed Puppeteer)
-8. Build SYSTEM.md from `config/SOUL.md` + `config/AGENT.md`
-9. Run Pi with SYSTEM.md + job.md as prompt
-10. Save session log to `logs/{JOB_ID}/`
-11. Commit all changes with message `thepopebot: job {JOB_ID}`
-12. Create PR via `gh pr create` (auto-merge handled by `auto-merge.yml` workflow)
+Key phases: export secrets as env vars → clone repo branch → install skill dependencies → optionally start headless Chrome → build SYSTEM.md from `config/SOUL.md` + `config/AGENT.md` → run Pi with job.md prompt → save session log to `logs/{JOB_ID}/` → commit and create PR.
 
 ### Environment Variables (Docker Agent)
 
@@ -407,68 +358,19 @@ Pi skills (brave-search, browser-tools, etc.) are **not baked into the Docker im
 
 ## Deployment
 
-See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for full production deployment details (Docker Compose, volume mounts, event handler image, build workflow).
-
-### Quick Reference
-
-```bash
-npm run dev              # Local development
-npm run build            # Build for production
-docker-compose up        # Start Traefik + event handler + runner
-```
-
-| Service | Image | Purpose |
-|---------|-------|---------|
-| **traefik** | `traefik:v3` | Reverse proxy with automatic HTTPS (Let's Encrypt) |
-| **event-handler** | `stephengpope/thepopebot:event-handler-${THEPOPEBOT_VERSION}` | Node.js runtime + PM2, serves the bind-mounted Next.js app on port 80 |
-| **runner** | `myoung34/github-runner:latest` | Self-hosted GitHub Actions runner for executing jobs |
+See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for full production deployment details (Docker Compose, Traefik, volume mounts, event handler image, self-hosted runner).
 
 ## GitHub Actions
 
-GitHub Actions are scaffolded into the user's project (from `templates/.github/workflows/`) and automate the job lifecycle. No manual webhook configuration needed.
+Workflows are scaffolded from `templates/.github/workflows/` into user projects. Read the workflow files directly for implementation details.
 
-### rebuild-event-handler.yml
-
-Triggers on push to `main`. Runs on the self-hosted runner. Skips rebuild for logs-only changes. Has two paths based on whether the thepopebot package version changed:
-
-- **Fast rebuild** (no version change): `npm install --omit=dev` → build `.next-new` → swap → PM2 reload. Standard path for normal code pushes.
-- **Docker restart** (version changed): Detects version change by comparing thepopebot version in `package-lock.json` before and after pull. Runs `npx thepopebot init` to scaffold new templates, commits any changes back to main, updates `THEPOPEBOT_VERSION` in `.env`, then `docker compose pull` + `up -d` to restart the container with the new image, followed by `npm install --omit=dev` → build → swap → PM2 reload inside the new container.
-
-### upgrade-event-handler.yml
-
-Triggers via manual `workflow_dispatch`. Only upgrades the thepopebot package — does not build, restart containers, or run `thepopebot init`. Works in an isolated clone (temp directory) so the live `/app` is never modified directly.
-
-1. Clones the repo to a temp directory
-2. Runs `npm install` + `npm update thepopebot`
-3. If changes exist → creates `upgrade/thepopebot-<version>-<timestamp>` branch, opens PR, enables auto-merge with `--delete-branch`
-4. PR merge to main triggers `rebuild-event-handler.yml`, which handles the version change (init, .env update, docker restart)
-
-The runner service has a read-only volume mount (`.:/project:ro`) to access `docker-compose.yml` and `.env` for the pull/restart step in `rebuild-event-handler.yml`.
-
-### build-image.yml
-
-Triggers on push to `main` (when `docker/job/**` files change), or via manual `workflow_dispatch`. Builds the Docker image and pushes it to GitHub Container Registry (GHCR). Only runs when `JOB_IMAGE_URL` is set to a GHCR URL (starts with `ghcr.io/`). Non-GHCR URLs skip this workflow entirely.
-
-### run-job.yml
-
-Triggers when a `job/*` branch is created. Runs the Docker agent container. If `JOB_IMAGE_URL` is set, pulls from that registry (logs into GHCR automatically for `ghcr.io/` URLs); otherwise falls back to `stephengpope/thepopebot:job-${THEPOPEBOT_VERSION}` (version-pinned from package-lock.json).
-
-### notify-pr-complete.yml
-
-Triggers after `auto-merge.yml` completes (via `workflow_run`), not in parallel. Checks out the PR branch, gathers all job data (job.md, commit message, changed files, session log), and sends a fat payload to the event handler including the `merge_result` (`merged`/`not_merged`). The event handler then summarizes via the LLM and sends a Telegram notification.
-
-### notify-job-failed.yml
-
-Triggers when `run-job.yml` fails (via `workflow_run`). Sends a notification payload to the event handler containing the job description and a link to the GitHub Actions run log, so the user is alerted to job failures.
-
-### auto-merge.yml
-
-Triggers when a PR is opened from a `job/*` branch. First waits for GitHub to compute mergeability (polls every 10s, up to 30 attempts). Then checks two repository variables before merging:
-
-1. **`AUTO_MERGE`** — If set to `"false"`, skip merge entirely. Any other value (or unset) means auto-merge is enabled.
-2. **`ALLOWED_PATHS`** — Comma-separated path prefixes (e.g., `/logs`). Only merges if all changed files fall within allowed prefixes. Defaults to `/logs` if unset.
-
-If the PR is mergeable and both checks pass, merges the PR with `--squash`. If there's a merge conflict, the merge is skipped and the PR stays open for manual review. After this workflow completes, `notify-pr-complete.yml` fires to send the notification.
+- **rebuild-event-handler.yml** — Triggers on push to `main`. Fast path (build + PM2 reload) or Docker restart path if the thepopebot package version changed.
+- **upgrade-event-handler.yml** — Manual `workflow_dispatch`. Creates a PR to upgrade the thepopebot package in an isolated clone.
+- **build-image.yml** — Builds and pushes the job Docker image to GHCR when `docker/job/**` changes (only if `JOB_IMAGE_URL` is a `ghcr.io/` URL).
+- **run-job.yml** — Triggers on `job/*` branch creation. Runs the Docker agent container.
+- **auto-merge.yml** — Squash-merges job PRs if `AUTO_MERGE` is not `"false"` and all changed files fall within `ALLOWED_PATHS` prefixes (default: `/logs`).
+- **notify-pr-complete.yml** — Fires after `auto-merge.yml`. Gathers job data and sends notification payload to event handler.
+- **notify-job-failed.yml** — Fires when `run-job.yml` fails. Sends failure notification to event handler.
 
 ### GitHub Secrets Required
 
@@ -481,8 +383,6 @@ Individual GitHub secrets use a prefix-based naming convention:
 | *(none)* | Workflow-only secrets (never passed to container) | N/A | `GH_WEBHOOK_SECRET` |
 
 ### GitHub Repository Variables
-
-Configure these in **Settings → Secrets and variables → Actions → Variables**:
 
 | Variable | Description | Default |
 |----------|-------------|---------|
@@ -497,9 +397,7 @@ Configure these in **Settings → Secrets and variables → Actions → Variable
 
 ## How Credentials Work
 
-Each credential is stored as an individual GitHub secret with a naming prefix (`AGENT_*` or `AGENT_LLM_*`). At runtime, `run-job.yml` uses `jq` to filter `${{ toJson(secrets) }}` by prefix, strips the prefix, and builds plain JSON objects for `SECRETS` and `LLM_SECRETS`. These are passed to the Docker container as environment variables.
-
-Inside the container, `entrypoint.sh` parses the JSON and exports each key as a flat environment variable. The `env-sanitizer` extension reads `process.env.SECRETS` (still the original JSON string) and filters those keys from the LLM's bash subprocess. `AGENT_LLM_*` secrets are stored in `LLM_SECRETS` and are NOT filtered.
+GitHub secrets with `AGENT_*` and `AGENT_LLM_*` prefixes are collected by `run-job.yml` into `SECRETS` and `LLM_SECRETS` JSON objects (prefix stripped). The container exports these as env vars. `AGENT_*` secrets are filtered from the LLM's bash via `env-sanitizer`; `AGENT_LLM_*` secrets are not filtered.
 
 ## Customization Points
 
@@ -510,6 +408,7 @@ Users create their agent project with `npx thepopebot init` then `npm run setup`
 - **config/JOB_SUMMARY.md** — Prompt for summarizing completed jobs
 - **config/HEARTBEAT.md** — Self-monitoring behavior
 - **config/AGENT.md** — Agent runtime environment
+- **config/PI_SKILL_GUIDE.md** — Guide for Pi agent skills (referenced by agent tools)
 - **config/CRONS.json** — Scheduled job definitions
 - **config/TRIGGERS.json** — Webhook trigger definitions
 - **pi-skills/** — All available Pi agent skills (scaffolded from package submodule)
@@ -522,12 +421,12 @@ Each job gets its own directory at `logs/{JOB_ID}/` containing both the job desc
 
 ## Markdown File Includes
 
-Markdown files in `config/` support a `{{filepath}}` include syntax, powered by `lib/utils/render-md.js`.
+Markdown files in `config/` support includes and built-in variables, powered by `lib/utils/render-md.js`.
 
-- **Syntax**: `{{ filepath }}` — double curly braces around a file path
-- **Path resolution**: Paths resolve relative to the user's project root (`process.cwd()`)
-- **Recursive**: Included files can themselves contain includes
-- **Circular protection**: If a circular include is detected, it is skipped and a warning is logged
-- **Missing files**: If a referenced file doesn't exist, the pattern is left as-is
+**File includes**: `{{ filepath.md }}` — resolves relative to project root, recursive with circular detection. Missing files are left as-is.
+
+**Built-in variables**:
+- `{{datetime}}` — Current ISO timestamp
+- `{{skills}}` — Bullet list of active skill descriptions from `.pi/skills/*/SKILL.md` frontmatter
 
 Currently used by the Event Handler to load EVENT_HANDLER.md as the LLM system prompt.
