@@ -169,7 +169,7 @@ async function main() {
     const dirName = path.basename(process.cwd());
     const projectName = await clack.text({
       message: 'Name your project:',
-      defaultValue: dirName,
+      initialValue: dirName,
       validate: (input) => {
         if (!input) return 'Name is required';
       },
